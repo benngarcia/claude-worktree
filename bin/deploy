@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+set -e
+
+# Check for uncommitted changes
+if ! git diff-index --quiet HEAD --; then
+    echo "❌ Error: You have uncommitted changes. Please commit or stash them before deploying."
+    exit 1
+fi
+
+echo "🚀 Starting deployment sequence..."
+echo "This will: "
+echo "  1. Tag the current version in git"
+echo "  2. Push commits and tags to remote"
+echo "  3. Build the gem"
+echo "  4. Push to RubyGems"
+echo ""
+
+# Confirm
+read -p "Are you sure you want to release? (y/N) " -n 1 -r
+echo
+if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+    echo "Aborted."
+    exit 1
+fi
+
+bundle exec rake release
