@@ -20,6 +20,10 @@ When you use `cwt`, you are just running a TUI (Terminal User Interface) to mana
 *   **Safety Net:** cwt checks for unmerged changes before you delete a session, so you don't accidentally lose work.
 *   **Auto-Setup:** Symlinks your .env and node_modules out of the box. If you need a more advanced setup, use `.cwt/setup`
 
+## 📸 Demo
+
+![Demo](assets/demo.gif)
+
 ## 📦 Installation
 
 ```bash
