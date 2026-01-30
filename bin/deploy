@@ -24,3 +24,26 @@ if [[ ! $REPLY =~ ^[Yy]$ ]]; then
 fi
 
 bundle exec rake release
+
+# Get the version that was just released
+VERSION=$(ruby -r./lib/claude/worktree/version -e 'puts Claude::Worktree::VERSION')
+GEM_URL="https://rubygems.org/downloads/claude-worktree-${VERSION}.gem"
+
+echo ""
+echo "✅ Gem released successfully!"
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "📦 Homebrew Update Instructions"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+echo "1. Wait a minute for RubyGems to propagate, then get the SHA256:"
+echo ""
+echo "   curl -sL ${GEM_URL} | shasum -a 256"
+echo ""
+echo "2. Update your Homebrew tap formula with:"
+echo "   - version \"${VERSION}\""
+echo "   - sha256 \"<sha from step 1>\""
+echo ""
+echo "3. Commit and push the formula update."
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
