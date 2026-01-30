@@ -32,7 +32,7 @@ gem install claude-worktree
 
 Or via Homebrew Tap:
 ```bash
-brew tap bengarcia/tap
+brew tap benngarcia/tap
 brew install cwt
 ```
 
