@@ -57,8 +57,10 @@ If this file exists, `cwt` will **skip the default symlinks** and execute your s
 
 ```bash
 #!/bin/bash
+# $CWT_ROOT points to your repo root
+
 # Copy .env so we can modify it safely in this session
-cp ../.env .
+cp "$CWT_ROOT/.env" .
 
 # Install dependencies freshly (cleaner than symlinking)
 npm ci
