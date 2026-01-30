@@ -52,7 +52,7 @@ module Cwt
           end
 
           event = tui.poll_event(timeout: 0.1)
-          
+
           # Process TUI Event
           cmd = nil
           if event.key?
@@ -62,7 +62,7 @@ module Cwt
           elsif event.none?
             cmd = Update.handle(model, { type: :tick })
           end
-          
+
           handle_command(cmd, model, tui, main_queue) if cmd
 
           # Process Background Queue
@@ -73,6 +73,12 @@ module Cwt
             end
           end
         end
+      end
+
+      # After TUI exits, cd into last worktree if one was resumed
+      if model.exit_directory && Dir.exist?(model.exit_directory)
+        Dir.chdir(model.exit_directory)
+        exec ENV.fetch('SHELL', '/bin/zsh')
       end
     end
 
@@ -88,11 +94,18 @@ module Cwt
       case cmd[:type]
       when :quit
         model.quit
-      when :create_worktree, :delete_worktree, :refresh_list
+      when :delete_worktree
+        # Suspend TUI for visible teardown output
+        RatatuiRuby.restore_terminal
+        puts "\e[H\e[2J" # Clear screen
+        result = Update.handle(model, cmd)
+        RatatuiRuby.init_terminal
+        handle_command(result, model, tui, main_queue)
+      when :create_worktree, :refresh_list
         result = Update.handle(model, cmd)
         handle_command(result, model, tui, main_queue)
       when :resume_worktree, :suspend_and_resume
-        suspend_tui_and_run(cmd[:path], tui)
+        suspend_tui_and_run(cmd[:path], model, tui)
         Update.refresh_list(model)
         start_background_fetch(model, main_queue)
       end
@@ -134,11 +147,24 @@ module Cwt
       end
     end
 
-    def self.suspend_tui_and_run(path, tui)
+    def self.suspend_tui_and_run(path, model, tui)
       RatatuiRuby.restore_terminal
-      
+
       puts "\e[H\e[2J" # Clear screen
-      puts "Resuming session in #{path}..."
+
+      # Run setup if this is a new worktree
+      if Git.needs_setup?(path)
+        begin
+          Git.run_setup_visible(path)
+          Git.mark_setup_complete(path)
+        rescue Interrupt
+          puts "\nSetup aborted."
+          RatatuiRuby.init_terminal
+          return
+        end
+      end
+
+      puts "Launching claude in #{path}..."
       begin
         Dir.chdir(path) do
           if defined?(Bundler)
@@ -147,6 +173,8 @@ module Cwt
             system("claude")
           end
         end
+        # Track last resumed path for exit
+        model.exit_directory = path
       rescue => e
         puts "Error: #{e.message}"
         print "Press any key to return..."

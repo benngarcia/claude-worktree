@@ -1,6 +1,7 @@
 module Cwt
   class Model
     attr_reader :worktrees, :selection_index, :mode, :input_buffer, :message, :running, :fetch_generation, :filter_query
+    attr_accessor :exit_directory
 
     def initialize
       @worktrees = []
@@ -11,6 +12,7 @@ module Cwt
       @message = "Welcome to CWT"
       @running = true
       @fetch_generation = 0
+      @exit_directory = nil
     end
 
     def update_worktrees(list)

@@ -49,6 +49,8 @@ module Cwt
       { dirty: false }
     end
 
+    SETUP_MARKER = ".cwt_needs_setup"
+
     def self.add_worktree(name)
       # Sanitize name
       safe_name = name.strip.gsub(/[^a-zA-Z0-9_\-]/, '_')
@@ -66,13 +68,81 @@ module Cwt
         return { success: false, error: stderr }
       end
 
-      # Post-creation setup: Copy .env if it exists
-      setup_environment(path)
+      # Mark worktree as needing setup (will run on first resume)
+      mark_needs_setup(path)
 
       { success: true, path: path }
     end
 
+    def self.needs_setup?(path)
+      File.exist?(File.join(path, SETUP_MARKER))
+    end
+
+    def self.mark_needs_setup(path)
+      FileUtils.touch(File.join(path, SETUP_MARKER))
+    end
+
+    def self.mark_setup_complete(path)
+      marker = File.join(path, SETUP_MARKER)
+      File.delete(marker) if File.exist?(marker)
+    end
+
+    def self.run_setup_visible(path)
+      root = Dir.pwd
+      setup_script = File.join(root, ".cwt", "setup")
+
+      if File.exist?(setup_script) && File.executable?(setup_script)
+        puts "\e[1;36m=== Running .cwt/setup ===\e[0m"
+        puts
+
+        success = Dir.chdir(path) do
+          system({ "CWT_ROOT" => root }, setup_script)
+        end
+
+        puts
+
+        unless success
+          puts "\e[1;33mWarning: .cwt/setup failed (exit code: #{$?.exitstatus})\e[0m"
+          print "Press Enter to continue or Ctrl+C to abort..."
+          begin
+            STDIN.gets
+          rescue Interrupt
+            raise
+          end
+        end
+      else
+        # Default behavior: Symlink .env and node_modules (silent, fast)
+        setup_default_symlinks(path, root)
+      end
+    end
+
+    def self.run_teardown(path)
+      root = Dir.pwd
+      teardown_script = File.join(root, ".cwt", "teardown")
+
+      return { ran: false } unless File.exist?(teardown_script) && File.executable?(teardown_script)
+
+      puts "\e[1;36m=== Running .cwt/teardown ===\e[0m"
+      puts
+
+      success = Dir.chdir(path) do
+        system({ "CWT_ROOT" => root }, teardown_script)
+      end
+
+      puts
+
+      { ran: true, success: success }
+    end
+
     def self.remove_worktree(path, force: false)
+      # Step 0: Run teardown script if directory exists
+      if Dir.exist?(path)
+        result = run_teardown(path)
+        if result[:ran] && !result[:success] && !force
+          return { success: false, error: "Teardown script failed. Use 'D' to force delete." }
+        end
+      end
+
       # Step 1: Cleanup symlinks/copies (Best effort)
       # This helps 'safe delete' succeed if only untracked files are present.
       [".env", "node_modules"].each do |file|
@@ -153,19 +223,7 @@ module Cwt
       worktrees
     end
 
-    def self.setup_environment(target_path)
-      root = Dir.pwd
-      setup_script = File.join(root, ".cwt", "setup")
-
-      # 1. Custom Setup Script
-      if File.exist?(setup_script) && File.executable?(setup_script)
-        # Execute the script inside the new worktree
-        # passing the root path as an argument might be helpful, but relying on relative paths is standard.
-        Open3.capture2(setup_script, chdir: target_path)
-        return
-      end
-
-      # 2. Default Behavior: Symlink .env and node_modules
+    def self.setup_default_symlinks(target_path, root)
       files_to_link = [".env", "node_modules"]
 
       files_to_link.each do |file|
