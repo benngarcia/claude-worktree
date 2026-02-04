@@ -13,7 +13,8 @@ module Cwt
       accent: { fg: :cyan },
       dirty: { fg: :yellow },
       clean: { fg: :green },
-      modal_border: { fg: :magenta }
+      modal_border: { fg: :magenta },
+      repo_header: { fg: :magenta, modifiers: [:bold] }
     }.freeze
 
     def self.draw(model, tui, frame)
@@ -39,7 +40,7 @@ module Cwt
         ]
       )
 
-      draw_header(tui, frame, header_area)
+      draw_header(model, tui, frame, header_area)
       draw_list(model, tui, frame, list_area)
       draw_footer(model, tui, frame, footer_area)
 
@@ -59,9 +60,16 @@ module Cwt
       tui.rect(x: x, y: y, width: w, height: h)
     end
 
-    def self.draw_header(tui, frame, area)
+    def self.draw_header(model, tui, frame, area)
+      # Show repo count if multiple repos
+      repo_info = if model.repositories.size > 1
+        " (#{model.repositories.size} repos)"
+      else
+        ""
+      end
+
       title = tui.paragraph(
-        text: " CWT v#{Claude::Worktree::VERSION} • WORKTREE MANAGER ",
+        text: " CWT v#{Claude::Worktree::VERSION} • WORKTREE MANAGER#{repo_info} ",
         alignment: :center,
         style: tui.style(**THEME[:header]),
         block: tui.block(
@@ -73,17 +81,41 @@ module Cwt
     end
 
     def self.draw_list(model, tui, frame, area)
-      items = model.visible_worktrees.map do |wt|
+      items = []
+      last_repo = nil
+
+      model.visible_worktrees.each do |wt|
+        # Add repo header if repo changed (for multi-repo view)
+        if model.repositories.size > 1 && wt.repository != last_repo
+          # Add separator if not first
+          if last_repo
+            items << tui.text_line(spans: [
+              tui.text_span(content: " ", style: tui.style(**THEME[:dim]))
+            ])
+          end
+
+          # Repo header
+          repo_label = wt.repository.nested? ? "  #{wt.repository.name}" : wt.repository.name
+          items << tui.text_line(spans: [
+            tui.text_span(content: " ", style: tui.style(**THEME[:dim])),
+            tui.text_span(content: repo_label.ljust(70), style: tui.style(**THEME[:repo_header]))
+          ])
+          last_repo = wt.repository
+        end
+
         # Status Icons
         status_icon = wt.dirty ? '●' : ' '
         status_style = wt.dirty ? tui.style(**THEME[:dirty]) : tui.style(**THEME[:clean])
 
         time = wt.last_commit || ''
 
+        # Add indent for nested repos
+        indent = wt.repository.nested? ? "  " : ""
+
         # Consistent Column Widths
-        tui.text_line(spans: [
+        items << tui.text_line(spans: [
           tui.text_span(content: " #{status_icon} ", style: status_style),
-          tui.text_span(content: wt.name.ljust(25), style: tui.style(modifiers: [:bold])),
+          tui.text_span(content: "#{indent}#{wt.name}".ljust(25), style: tui.style(modifiers: [:bold])),
           tui.text_span(content: (wt.branch || 'HEAD').ljust(25), style: tui.style(**THEME[:dim])),
           tui.text_span(content: time.rjust(15), style: tui.style(**THEME[:accent]))
         ])
@@ -97,6 +129,11 @@ module Cwt
                                         style: tui.style(
                                           fg: :white, modifiers: [:bold]
                                         ))
+                        ])
+                      elsif model.repositories.size > 1 && model.show_all_repos
+                        tui.text_line(spans: [
+                          tui.text_span(content: ' ALL SESSIONS ', style: tui.style(**THEME[:dim])),
+                          tui.text_span(content: '(t: toggle)', style: tui.style(**THEME[:accent]))
                         ])
                       else
                         tui.text_line(spans: [tui.text_span(content: ' SESSIONS ', style: tui.style(**THEME[:dim]))])
@@ -128,6 +165,7 @@ module Cwt
       case model.mode
       when :creating
         add_key.call('Enter', 'Confirm')
+        add_key.call('Tab', 'Change Repo')
         add_key.call('Esc', 'Cancel')
       when :filtering
         add_key.call('Type', 'Search')
@@ -138,6 +176,9 @@ module Cwt
         add_key.call('/', 'Filter')
         add_key.call('Enter', 'Resume')
         add_key.call('d', 'Delete')
+        if model.repositories.size > 1
+          add_key.call('t', 'Toggle')
+        end
         add_key.call('q', 'Quit')
       end
 
@@ -164,12 +205,20 @@ module Cwt
     end
 
     def self.draw_input_modal(model, tui, frame)
-      area = center_rect(tui, frame.area, 50, 3)
+      area = center_rect(tui, frame.area, 50, 5)
 
       frame.render_widget(tui.clear, area)
 
+      # Show target repository in modal
+      target_repo = model.target_repository
+      repo_indicator = if model.repositories.size > 1
+        " [#{target_repo.name}]"
+      else
+        ""
+      end
+
       input = tui.paragraph(
-        text: model.input_buffer,
+        text: "#{model.input_buffer}#{repo_indicator}",
         style: tui.style(fg: :white),
         block: tui.block(
           title: ' NEW SESSION ',

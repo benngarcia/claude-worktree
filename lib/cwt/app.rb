@@ -14,17 +14,19 @@ module Cwt
     POOL_SIZE = 4
 
     def self.run
-      # Discover repository from current directory (works from worktrees too)
-      repository = Repository.discover
-      unless repository
+      # Discover all repositories (parent + nested) from current directory
+      repositories = Repository.discover_all
+      if repositories.empty?
         puts "Error: Not in a git repository"
         exit 1
       end
 
-      # Change to repo root for consistent paths
-      Dir.chdir(repository.root)
+      primary_repo = repositories.first
 
-      model = Model.new(repository)
+      # Change to primary repo root for consistent paths
+      Dir.chdir(primary_repo.root)
+
+      model = Model.new(repositories)
 
       # Initialize Thread Pool
       @worker_queue = Queue.new
