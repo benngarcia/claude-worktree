@@ -18,7 +18,12 @@ module Cwt
     }.freeze
 
     def self.draw(model, tui, frame)
-      content_height = [model.visible_worktrees.size + 6, frame.area.height].min
+      # Calculate actual item count: worktrees + repo headers + separators
+      worktrees = model.visible_worktrees
+      repo_count = worktrees.map(&:repository).uniq.size
+      separator_count = [repo_count - 1, 0].max
+      total_items = worktrees.size + repo_count + separator_count
+      content_height = [total_items + 6, frame.area.height].min
 
       app_area = centered_app_area(tui, frame.area, width: 100, height: content_height)
 
@@ -83,6 +88,8 @@ module Cwt
     def self.draw_list(model, tui, frame, area)
       items = []
       last_repo = nil
+      worktree_to_visual = {}  # Map worktree index → visual index
+      worktree_idx = 0
 
       model.visible_worktrees.each do |wt|
         # Add repo header if repo changed (for multi-repo view)
@@ -103,6 +110,10 @@ module Cwt
           last_repo = wt.repository
         end
 
+        # Track visual position before adding worktree line
+        worktree_to_visual[worktree_idx] = items.size
+        worktree_idx += 1
+
         # Status Icons
         status_icon = wt.dirty ? '●' : ' '
         status_style = wt.dirty ? tui.style(**THEME[:dirty]) : tui.style(**THEME[:clean])
@@ -120,6 +131,9 @@ module Cwt
           tui.text_span(content: time.rjust(15), style: tui.style(**THEME[:accent]))
         ])
       end
+
+      # Convert worktree selection index to visual index
+      visual_index = worktree_to_visual[model.selection_index] || 0
 
       # Dynamic Title based on context
       title_content = if model.mode == :filtering
@@ -141,7 +155,7 @@ module Cwt
 
       list = tui.list(
         items: items,
-        selected_index: model.selection_index,
+        selected_index: visual_index,
         highlight_style: tui.style(**THEME[:selection]),
         highlight_symbol: '▎',
         block: tui.block(

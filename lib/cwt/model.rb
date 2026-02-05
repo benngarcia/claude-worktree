@@ -70,8 +70,13 @@ module Cwt
         end
       end
 
-      # Sort by repository for grouped display
-      list.sort_by { |wt| [wt.repository.name, wt.name] }
+      # Sort by repository for grouped display (parent first, then nested)
+      list.sort_by do |wt|
+        parent_name = wt.repository.parent_repository&.name || wt.repository.name
+        nested_order = wt.repository.nested? ? 1 : 0
+        main_order = wt.main? ? 0 : 1  # Repository root first, then .worktrees/
+        [parent_name, nested_order, wt.repository.name, main_order, wt.name]
+      end
     end
 
     # Group worktrees by repository for display
