@@ -158,8 +158,9 @@ module Cwt
       keys = []
 
       add_key = lambda { |key, desc|
-        keys << tui.text_span(content: " #{key} ", style: tui.style(bg: :dark_gray, fg: :white))
-        keys << tui.text_span(content: " #{desc} ", style: tui.style(**THEME[:dim]))
+        keys << tui.text_span(content: " ", style: tui.style(**THEME[:dim]))
+        keys << tui.text_span(content: " #{key}", style: tui.style(bg: :dark_gray, fg: :white))
+        keys << tui.text_span(content: "  #{desc} ", style: tui.style(**THEME[:dim]))
       }
 
       case model.mode
