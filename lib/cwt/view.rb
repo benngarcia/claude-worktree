@@ -32,7 +32,7 @@ module Cwt
         direction: :vertical,
         constraints: [
           tui.constraint_fill(1),
-          tui.constraint_length(3)
+          tui.constraint_length(4)
         ]
       )
 
@@ -92,21 +92,13 @@ module Cwt
       worktree_idx = 0
 
       model.visible_worktrees.each do |wt|
-        # Add repo header if repo changed (for multi-repo view)
+        # Add separator between repos (multi-repo view only)
         if model.repositories.size > 1 && wt.repository != last_repo
-          # Add separator if not first
           if last_repo
             items << tui.text_line(spans: [
               tui.text_span(content: " ", style: tui.style(**THEME[:dim]))
             ])
           end
-
-          # Repo header
-          repo_label = wt.repository.nested? ? "  #{wt.repository.name}" : wt.repository.name
-          items << tui.text_line(spans: [
-            tui.text_span(content: " ", style: tui.style(**THEME[:dim])),
-            tui.text_span(content: repo_label.ljust(70), style: tui.style(**THEME[:repo_header]))
-          ])
           last_repo = wt.repository
         end
 
@@ -120,16 +112,25 @@ module Cwt
 
         time = wt.last_commit || ''
 
-        # Add indent for nested repos
-        indent = wt.repository.nested? ? "  " : ""
-
-        # Consistent Column Widths
-        items << tui.text_line(spans: [
-          tui.text_span(content: " #{status_icon} ", style: status_style),
-          tui.text_span(content: "#{indent}#{wt.name}".ljust(25), style: tui.style(modifiers: [:bold])),
-          tui.text_span(content: (wt.branch || 'HEAD').ljust(25), style: tui.style(**THEME[:dim])),
-          tui.text_span(content: time.rjust(15), style: tui.style(**THEME[:accent]))
-        ])
+        if wt.main?
+          # Main worktree (repo root) - selectable, magenta style with branch/time info
+          indent = wt.repository.nested? ? "  " : ""
+          items << tui.text_line(spans: [
+            tui.text_span(content: " #{status_icon} ", style: status_style),
+            tui.text_span(content: "#{indent}#{wt.repository.name}".ljust(25), style: tui.style(**THEME[:repo_header])),
+            tui.text_span(content: (wt.branch || 'HEAD').ljust(25), style: tui.style(**THEME[:dim])),
+            tui.text_span(content: time.rjust(15), style: tui.style(**THEME[:accent]))
+          ])
+        else
+          # Regular worktree - extra indent, bold white
+          indent = wt.repository.nested? ? "    " : "  "
+          items << tui.text_line(spans: [
+            tui.text_span(content: " #{status_icon} ", style: status_style),
+            tui.text_span(content: "#{indent}#{wt.name}".ljust(25), style: tui.style(modifiers: [:bold])),
+            tui.text_span(content: (wt.branch || 'HEAD').ljust(25), style: tui.style(**THEME[:dim])),
+            tui.text_span(content: time.rjust(15), style: tui.style(**THEME[:accent]))
+          ])
+        end
       end
 
       # Convert worktree selection index to visual index
@@ -205,6 +206,7 @@ module Cwt
 
       text = [
         tui.text_line(spans: [tui.text_span(content: model.message, style: msg_style)]),
+        tui.text_line(spans: []),
         tui.text_line(spans: keys)
       ]
 
@@ -224,19 +226,22 @@ module Cwt
 
       frame.render_widget(tui.clear, area)
 
-      # Show target repository in modal
+      # Show target repository in title when multiple repos
       target_repo = model.target_repository
-      repo_indicator = if model.repositories.size > 1
-        " [#{target_repo.name}]"
+      title_text = if model.repositories.size > 1
+        " NEW SESSION in #{target_repo.name} "
       else
-        ""
+        ' NEW SESSION '
       end
 
+      # Add cursor indicator to input
+      input_with_cursor = "#{model.input_buffer}|"
+
       input = tui.paragraph(
-        text: "#{model.input_buffer}#{repo_indicator}",
+        text: input_with_cursor,
         style: tui.style(fg: :white),
         block: tui.block(
-          title: ' NEW SESSION ',
+          title: title_text,
           title_style: tui.style(fg: :blue, modifiers: [:bold]),
           borders: [:all],
           border_style: tui.style(**THEME[:modal_border])

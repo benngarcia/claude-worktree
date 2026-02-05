@@ -154,6 +154,11 @@ module Cwt
       @selected_repo_index = (@selected_repo_index + 1) % @repositories.size
     end
 
+    def set_selected_repo_to(repo)
+      idx = @repositories.index(repo)
+      @selected_repo_index = idx if idx
+    end
+
     def toggle_show_all_repos
       @show_all_repos = !@show_all_repos
       refresh_worktrees!

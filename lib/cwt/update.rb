@@ -110,7 +110,10 @@ module Cwt
         elsif event.k? || event.up?
           model.move_selection(-1)
         elsif event.n?
+          wt = model.selected_worktree
           model.set_mode(:creating)
+          # Set target repo based on currently selected worktree (after reset)
+          model.set_selected_repo_to(wt.repository) if wt
         elsif event.slash? # / key
           model.set_mode(:filtering)
         elsif event.d?

@@ -28,6 +28,10 @@ module Cwt
       Dir.exist?(@path)
     end
 
+    def main?
+      @path == @repository.root
+    end
+
     def needs_setup?
       File.exist?(setup_marker_path)
     end
