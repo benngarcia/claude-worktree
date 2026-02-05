@@ -15,7 +15,7 @@ module Cwt
       cmd += ["-C", repo_root] if repo_root
       cmd += ["--no-optional-locks", "show", "-s", "--format=%H|%cr"] + shas
 
-      stdout, status = Open3.capture2(*cmd)
+      stdout, _stderr, status = Open3.capture3(*cmd)
       return {} unless status.success?
 
       ages = {}

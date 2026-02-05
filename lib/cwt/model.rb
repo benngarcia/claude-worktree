@@ -2,20 +2,30 @@
 
 module Cwt
   class Model
-    attr_reader :repository, :selection_index, :mode, :input_buffer, :message, :running, :fetch_generation, :filter_query
+    attr_reader :repositories, :primary_repository, :selection_index, :mode, :input_buffer, :message, :running, :fetch_generation, :filter_query
     attr_accessor :resume_to  # Worktree object or nil
+    attr_accessor :show_all_repos  # Toggle between current repo and all repos
+    attr_accessor :selected_repo_index  # For creating worktrees in specific repo
 
-    def initialize(repository)
-      @repository = repository
+    def initialize(repositories)
+      @repositories = Array(repositories)
+      @primary_repository = @repositories.first
       @worktrees_cache = []
       @selection_index = 0
-      @mode = :normal # :normal, :creating, :filtering
+      @mode = :normal # :normal, :creating, :filtering, :selecting_repo
       @input_buffer = String.new
       @filter_query = String.new
       @message = "Welcome to CWT"
       @running = true
       @fetch_generation = 0
       @resume_to = nil
+      @show_all_repos = true  # Default to showing all repos
+      @selected_repo_index = 0
+    end
+
+    # Backward compatibility - return primary repository
+    def repository
+      @primary_repository
     end
 
     def worktrees
@@ -23,7 +33,13 @@ module Cwt
     end
 
     def refresh_worktrees!
-      @worktrees_cache = @repository.worktrees
+      if @show_all_repos
+        # Collect worktrees from all repositories
+        @worktrees_cache = @repositories.flat_map(&:worktrees)
+      else
+        # Only primary repository
+        @worktrees_cache = @primary_repository.worktrees
+      end
       clamp_selection
       @worktrees_cache
     end
@@ -44,13 +60,28 @@ module Cwt
     end
 
     def visible_worktrees
-      if @filter_query.empty?
+      list = if @filter_query.empty?
         @worktrees_cache
       else
         @worktrees_cache.select do |wt|
-          wt.path.include?(@filter_query) || (wt.branch && wt.branch.include?(@filter_query))
+          wt.path.include?(@filter_query) ||
+          (wt.branch && wt.branch.include?(@filter_query)) ||
+          wt.repository.name.include?(@filter_query)
         end
       end
+
+      # Sort by repository for grouped display (parent first, then nested)
+      list.sort_by do |wt|
+        parent_name = wt.repository.parent_repository&.name || wt.repository.name
+        nested_order = wt.repository.nested? ? 1 : 0
+        main_order = wt.main? ? 0 : 1  # Repository root first, then .worktrees/
+        [parent_name, nested_order, wt.repository.name, main_order, wt.name]
+      end
+    end
+
+    # Group worktrees by repository for display
+    def worktrees_by_repository
+      visible_worktrees.group_by { |wt| wt.repository }
     end
 
     def increment_generation
@@ -71,10 +102,13 @@ module Cwt
       @mode = mode
       if mode == :creating
         @input_buffer = String.new
-        @message = "Enter session name: "
+        @selected_repo_index = 0
+        @message = "Enter session name (Tab to change repo): "
       elsif mode == :filtering
         @message = "Filter: "
         # We don't clear filter query here, we assume user wants to edit it
+      elsif mode == :selecting_repo
+        @message = "Select repository: "
       else
         @message = "Ready"
       end
@@ -109,6 +143,25 @@ module Cwt
 
     def selected_worktree
       visible_worktrees[@selection_index]
+    end
+
+    # Get the repository to create worktree in
+    def target_repository
+      @repositories[@selected_repo_index] || @primary_repository
+    end
+
+    def cycle_target_repo
+      @selected_repo_index = (@selected_repo_index + 1) % @repositories.size
+    end
+
+    def set_selected_repo_to(repo)
+      idx = @repositories.index(repo)
+      @selected_repo_index = idx if idx
+    end
+
+    def toggle_show_all_repos
+      @show_all_repos = !@show_all_repos
+      refresh_worktrees!
     end
 
     def quit

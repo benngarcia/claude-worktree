@@ -14,9 +14,11 @@ module Cwt
         refresh_list(model)
         :start_background_fetch
       when :create_worktree
-        result = model.repository.create_worktree(message[:name])
+        # Use target repository for creation (supports multi-repo)
+        target_repo = message[:repository] || model.target_repository
+        result = target_repo.create_worktree(message[:name])
         if result[:success]
-          model.set_message("Created worktree: #{message[:name]}")
+          model.set_message("Created worktree: #{message[:name]} in #{target_repo.name}")
           refresh_list(model)
           model.set_mode(:normal)
           model.set_filter(String.new) # Clear filter
@@ -64,9 +66,13 @@ module Cwt
     def self.handle_key(model, event)
       if model.mode == :creating
         if event.enter?
-          return { type: :create_worktree, name: model.input_buffer }
+          return { type: :create_worktree, name: model.input_buffer, repository: model.target_repository }
         elsif event.esc?
           model.set_mode(:normal)
+        elsif event.tab?
+          # Cycle through repositories
+          model.cycle_target_repo
+          model.set_message("Target: #{model.target_repository.name}")
         elsif event.backspace?
           model.input_backspace
         elsif event.to_s.length == 1
@@ -104,7 +110,10 @@ module Cwt
         elsif event.k? || event.up?
           model.move_selection(-1)
         elsif event.n?
+          wt = model.selected_worktree
           model.set_mode(:creating)
+          # Set target repo based on currently selected worktree (after reset)
+          model.set_selected_repo_to(wt.repository) if wt
         elsif event.slash? # / key
           model.set_mode(:filtering)
         elsif event.d?
@@ -121,6 +130,12 @@ module Cwt
           end
         elsif event.r?
           return { type: :refresh_list }
+        elsif event.t?
+          # Toggle show all repos
+          model.toggle_show_all_repos
+          mode_str = model.show_all_repos ? "all repos" : "current repo only"
+          model.set_message("Showing #{mode_str}")
+          return :start_background_fetch
         end
       end
       nil

@@ -14,17 +14,19 @@ module Cwt
     POOL_SIZE = 4
 
     def self.run
-      # Discover repository from current directory (works from worktrees too)
-      repository = Repository.discover
-      unless repository
+      # Discover all repositories (parent + nested) from current directory
+      repositories = Repository.discover_all
+      if repositories.empty?
         puts "Error: Not in a git repository"
         exit 1
       end
 
-      # Change to repo root for consistent paths
-      Dir.chdir(repository.root)
+      primary_repo = repositories.first
 
-      model = Model.new(repository)
+      # Change to primary repo root for consistent paths
+      Dir.chdir(primary_repo.root)
+
+      model = Model.new(repositories)
 
       # Initialize Thread Pool
       @worker_queue = Queue.new
@@ -130,18 +132,23 @@ module Cwt
       worktrees = model.worktrees
 
       # Batch fetch commit ages in background thread
+      # Group by repository to fetch from correct git repo (avoids "bad object" errors)
       Thread.new do
-        shas = worktrees.map(&:sha).compact
-        ages = Git.get_commit_ages(shas, repo_root: model.repository.root)
+        worktrees.group_by(&:repository).each do |repo, repo_worktrees|
+          shas = repo_worktrees.map(&:sha).compact
+          next if shas.empty?
 
-        worktrees.each do |wt|
-          if (age = ages[wt.sha])
-            main_queue << {
-              type: :update_commit_age,
-              path: wt.path,
-              age: age,
-              generation: current_gen
-            }
+          ages = Git.get_commit_ages(shas, repo_root: repo.root)
+
+          repo_worktrees.each do |wt|
+            if (age = ages[wt.sha])
+              main_queue << {
+                type: :update_commit_age,
+                path: wt.path,
+                age: age,
+                generation: current_gen
+              }
+            end
           end
         end
       end

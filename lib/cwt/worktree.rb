@@ -28,6 +28,10 @@ module Cwt
       Dir.exist?(@path)
     end
 
+    def main?
+      @path == @repository.root
+    end
+
     def needs_setup?
       File.exist?(setup_marker_path)
     end
@@ -58,8 +62,11 @@ module Cwt
       puts "\e[1;36m=== Running .cwt/teardown ===\e[0m"
       puts
 
+      # Build enhanced environment variables for nested repo support
+      env = build_setup_env
+
       success = Dir.chdir(@path) do
-        system({ "CWT_ROOT" => File.realpath(@repository.root) }, @repository.teardown_script_path)
+        system(env, @repository.teardown_script_path)
       end
 
       puts
@@ -126,14 +133,40 @@ module Cwt
       File.join(@path, SETUP_MARKER)
     end
 
+    # Build environment variables for setup/teardown scripts
+    # Supports nested repository resolution
+    def build_setup_env
+      repo_root = File.realpath(@repository.root)
+      project_root = @repository.project_root ? File.realpath(@repository.project_root) : repo_root
+
+      # Calculate nesting depth
+      nested_depth = 0
+      if project_root != repo_root
+        # Count directory levels between project_root and repo_root
+        rel_path = repo_root.sub("#{project_root}/", "")
+        nested_depth = rel_path.count("/") + 1
+      end
+
+      {
+        "CWT_ROOT" => repo_root,
+        "CWT_PROJECT_ROOT" => project_root,
+        "CWT_WORKTREE" => @path,
+        "CWT_NESTED_DEPTH" => nested_depth.to_s,
+        "CWT_REPO_NAME" => @repository.name
+      }
+    end
+
     def run_custom_setup(visible: true)
       if visible
         puts "\e[1;36m=== Running .cwt/setup ===\e[0m"
         puts
       end
 
+      # Build enhanced environment variables for nested repo support
+      env = build_setup_env
+
       success = Dir.chdir(@path) do
-        system({ "CWT_ROOT" => File.realpath(@repository.root) }, @repository.setup_script_path)
+        system(env, @repository.setup_script_path)
       end
 
       puts if visible
